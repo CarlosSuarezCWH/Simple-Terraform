@@ -19,7 +19,7 @@ variable "db_password" {
 variable "key_name" {
   description = "Name of the SSH key pair"
   type        = string
-  default     = "terraform-key"
+  default     = "Keys_par_2"
 }
 
 variable "environment" {

@@ -5,7 +5,7 @@ output "db_endpoint" {
 
 output "db_name" {
   description = "Database name"
-  value       = aws_db_instance.default.name
+  value       = var.db_name
 }
 
 output "db_port" {
