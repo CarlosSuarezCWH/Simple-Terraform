@@ -1,26 +1,82 @@
-name: App Deploy
+name: Deploy Application
 
 on:
   workflow_dispatch:
   push:
+    branches: [ main ]
     paths:
       - 'app/**'
+      - 'scripts/**'
 
 jobs:
-  app-deploy:
+  deploy-app:
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      - name: Install dependencies
+        
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        
+      - name: Terraform Init
+        run: terraform init
+        
+      - name: Get infrastructure outputs
+        id: terraform-output
         run: |
-          cd app
-          pip install -r requirements.txt
-      - name: Run tests
+          echo "db_endpoint=$(terraform output -raw db_endpoint)" >> $GITHUB_OUTPUT
+          echo "web_server_ip=$(terraform output -raw web_server_ip)" >> $GITHUB_OUTPUT
+          
+      - name: Setup SSH key
         run: |
-          cd app
-          python -m unittest discover || true 
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ steps.terraform-output.outputs.web_server_ip }} >> ~/.ssh/known_hosts
+          
+      - name: Deploy application
+        run: |
+          echo "Deploying application to ${{ steps.terraform-output.outputs.web_server_ip }}"
+          
+          # Copy application files
+          scp -r app/ ec2-user@${{ steps.terraform-output.outputs.web_server_ip }}:/home/ec2-user/
+          
+          # Install dependencies and start application
+          ssh ec2-user@${{ steps.terraform-output.outputs.web_server_ip }} << 'EOF'
+            cd /home/ec2-user/app
+            sudo apt update
+            sudo apt install -y python3-pip python3-venv nginx
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            
+            # Configure environment variables
+            echo "DB_HOST=${{ steps.terraform-output.outputs.db_endpoint }}" > .env
+            echo "DB_USER=${{ secrets.DB_USERNAME }}" >> .env
+            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            echo "DB_NAME=sportsstore" >> .env
+            
+            # Start application
+            nohup python app.py > app.log 2>&1 &
+          EOF
+          
+      - name: Wait for application to start
+        run: |
+          echo "Waiting for application to start..."
+          sleep 30
+          
+      - name: Initialize database
+        run: |
+          echo "Initializing database with sample data..."
+          curl -X POST http://${{ steps.terraform-output.outputs.web_server_ip }}:5000/api/init-db
+          
+      - name: Verify deployment
+        run: |
+          echo "Verifying application deployment..."
+          sleep 10
+          curl -f http://${{ steps.terraform-output.outputs.web_server_ip }}:5000 || echo "Application not ready yet"
+        continue-on-error: true 

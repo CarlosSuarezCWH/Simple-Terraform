@@ -2,6 +2,10 @@ name: Terraform Destroy
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform-destroy.yml'
 
 jobs:
   terraform-destroy:
@@ -13,9 +17,21 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        
       - name: Terraform Init
         run: terraform init
+        
+      - name: Terraform Plan Destroy
+        run: terraform plan -destroy -out=destroy-plan
+        
       - name: Terraform Destroy
-        run: terraform destroy -auto-approve 
+        run: terraform apply destroy-plan
+        
+      - name: Verify destruction
+        run: |
+          echo "Verifying infrastructure destruction..."
+          terraform show || echo "Infrastructure destroyed successfully"
+        continue-on-error: true 

@@ -15,11 +15,21 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        
       - name: Terraform Init
         run: terraform init
+        
       - name: Terraform Plan
-        run: terraform plan
+        run: terraform plan -out=tfplan
+        
       - name: Terraform Apply
-        run: terraform apply -auto-approve 
+        run: terraform apply tfplan
+        
+      - name: Terraform Output
+        id: terraform-output
+        run: |
+          echo "db_endpoint=$(terraform output -raw db_endpoint)" >> $GITHUB_OUTPUT
+          echo "web_server_ip=$(terraform output -raw web_server_ip)" >> $GITHUB_OUTPUT 

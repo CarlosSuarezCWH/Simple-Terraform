@@ -1,6 +1,6 @@
-variable "private_subnet_id" {
-  description = "ID of the private subnet"
-  type        = string
+variable "private_subnet_ids" {
+  description = "IDs of the private subnets"
+  type        = list(string)
 }
 
 variable "db_username" {
