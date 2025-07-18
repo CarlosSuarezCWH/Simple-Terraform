@@ -1,4 +1,4 @@
-name: Deploy Application
+name: 🚀 Deploy Application
 
 on:
   workflow_dispatch:
@@ -7,76 +7,115 @@ on:
     paths:
       - 'app/**'
       - 'scripts/**'
+    paths-ignore:
+      - '**/README.md'
+      - '**/*.txt'
+
+env:
+  TF_IN_AUTOMATION: true
+  APP_PORT: 5000
+  DEPLOY_USER: ec2-user
+  APP_DIR: /home/ec2-user/app
 
 jobs:
   deploy-app:
     runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+    environment: production
+    permissions:
+      contents: read
+      id-token: write  # Para usar OIDC con AWS (opcional)
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        
-      - name: Setup Terraform
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Setup AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: � Setup Terraform
         uses: hashicorp/setup-terraform@v3
-        
-      - name: Terraform Init
-        run: terraform init
-        
-      - name: Get infrastructure outputs
+        with:
+          terraform_wrapper: false
+
+      - name: 🏗️ Terraform Init
+        run: terraform init -input=false
+
+      - name: 📡 Get infrastructure outputs
         id: terraform-output
         run: |
           echo "db_endpoint=$(terraform output -raw db_endpoint)" >> $GITHUB_OUTPUT
           echo "web_server_ip=$(terraform output -raw web_server_ip)" >> $GITHUB_OUTPUT
-          
-      - name: Setup SSH key
+          echo "WEB_SERVER_IP=$(terraform output -raw web_server_ip)" >> $GITHUB_ENV
+
+      - name: 🔐 Setup SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ steps.terraform-output.outputs.web_server_ip }} >> ~/.ssh/known_hosts
-          
-      - name: Deploy application
+
+      - name: 📦 Install rsync (for efficient file transfers)
+        run: sudo apt-get update && sudo apt-get install -y rsync
+
+      - name: 🚀 Deploy application files
         run: |
-          echo "Deploying application to ${{ steps.terraform-output.outputs.web_server_ip }}"
-          
-          # Copy application files
-          scp -r app/ ec2-user@${{ steps.terraform-output.outputs.web_server_ip }}:/home/ec2-user/
-          
-          # Install dependencies and start application
-          ssh ec2-user@${{ steps.terraform-output.outputs.web_server_ip }} << 'EOF'
-            cd /home/ec2-user/app
+          echo "📂 Syncing application files to server..."
+          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" \
+            ./app/ $DEPLOY_USER@${{ env.WEB_SERVER_IP }}:$APP_DIR/
+
+      - name: 🛠️ Setup application environment
+        run: |
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} << 'EOSSH'
+            set -e
+            echo "🐍 Setting up Python environment..."
             sudo apt update
             sudo apt install -y python3-pip python3-venv nginx
+            cd $APP_DIR
             python3 -m venv venv
             source venv/bin/activate
+            pip install --upgrade pip
             pip install -r requirements.txt
-            
-            # Configure environment variables
-            echo "DB_HOST=${{ steps.terraform-output.outputs.db_endpoint }}" > .env
-            echo "DB_USER=${{ secrets.DB_USERNAME }}" >> .env
-            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-            echo "DB_NAME=sportsstore" >> .env
-            
-            # Start application
+
+            echo "🔧 Configuring environment variables..."
+            cat > .env << EOF
+            DB_HOST=${{ steps.terraform-output.outputs.db_endpoint }}
+            DB_USER=${{ secrets.DB_USERNAME }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_NAME=sportsstore
+            APP_PORT=${{ env.APP_PORT }}
+            EOF
+
+            echo "🔄 Restarting application..."
+            pkill -f "python app.py" || true
             nohup python app.py > app.log 2>&1 &
-          EOF
-          
-      - name: Wait for application to start
+          EOSSH
+
+      - name: ⏳ Wait for application
         run: |
-          echo "Waiting for application to start..."
-          sleep 30
-          
-      - name: Initialize database
+          echo "⏱️ Waiting for application to start..."
+          for i in {1..10}; do
+            if curl -sSf http://${{ env.WEB_SERVER_IP }}:${{ env.APP_PORT }}/health-check; then
+              echo "✅ Application is ready!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "❌ Application failed to start"
+          exit 1
+
+      - name: 🗃️ Initialize database
         run: |
-          echo "Initializing database with sample data..."
-          curl -X POST http://${{ steps.terraform-output.outputs.web_server_ip }}:5000/api/init-db
-          
-      - name: Verify deployment
+          echo "🛢️ Initializing database..."
+          curl -X POST http://${{ env.WEB_SERVER_IP }}:${{ env.APP_PORT }}/api/init-db
+
+      - name: ✅ Verify deployment
         run: |
-          echo "Verifying application deployment..."
-          sleep 10
-          curl -f http://${{ steps.terraform-output.outputs.web_server_ip }}:5000 || echo "Application not ready yet"
-        continue-on-error: true 
+          echo "🔍 Verifying deployment..."
+          curl -sSf http://${{ env.WEB_SERVER_IP }}:${{ env.APP_PORT }}/api/status
+          echo -e "\n🎉 Deployment successful!"

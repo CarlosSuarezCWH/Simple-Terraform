@@ -1,48 +1,63 @@
-name: Terraform Destroy
+name: 🗑️ Destroy Infrastructure
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - 'terraform-destroy.yml'
+    inputs:
+      confirmation:
+        description: "Type 'DESTROY-PROD' to confirm"
+        required: true
+        default: "CANCEL"
+
+env:
+  TF_IN_AUTOMATION: true  # Critical for CI/CD
+  TF_CLI_ARGS: "-no-color"  # Cleaner logs
 
 jobs:
-  terraform-destroy:
+  destroy:
+    if: github.event.inputs.confirmation == 'DESTROY-PROD'
     runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+    environment: production  # Requires environment protection rules
+    permissions:
+      contents: read
+      id-token: write  # Required for AWS OIDC if using it
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Debug Environment Variables
+      - name: 🛑 Check Destruction Scope
         run: |
-          echo "AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID"
-          echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:0:4}********"
-          echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
-          echo "DB_PASSWORD: ${DB_PASSWORD:0:2}********"
-          env
-          echo "Current directory: $(pwd)"
-          ls -l
-      
-      - name: Setup Terraform
+          echo "⚠️ WARNING: This will DESTROY ALL RESOURCES in ${AWS_DEFAULT_REGION}"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Triggered by: $GITHUB_ACTOR"
+
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for Terraform may be needed
+
+      - name: ⚙️ Setup Terraform
         uses: hashicorp/setup-terraform@v3
-      
-      - name: Terraform Init
-        run: terraform init
-      
-      - name: Terraform Plan Destroy
-        run: terraform plan -destroy -var="db_password=$DB_PASSWORD" -out=destroy-plan
-      
-      - name: Terraform Destroy
-        run: terraform apply destroy-plan
-      
-      - name: Verify destruction
+        with:
+          terraform_version: "1.8.0"  # Pin your version
+          terraform_wrapper: false
+
+      - name: 🔑 AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: 🏗️ Terraform Init
+        run: terraform init -input=false -backend-config="bucket=your-tf-state-bucket"
+
+      - name: 🕵️♂️ Terraform Plan (Destroy)
+        run: terraform plan -destroy -input=false -out=destroy.plan
+
+      - name: 🧨 Terraform Destroy
+        run: terraform apply -input=false -auto-approve destroy.plan
+
+      - name: 📝 Destruction Report
+        if: always()
         run: |
-          echo "Verifying infrastructure destruction..."
-          terraform show || echo "Infrastructure destroyed successfully"
-        continue-on-error: true 
+          echo "=== Destruction Summary ==="
+          terraform show -no-color destroy.plan 2>/dev/null || echo "No plan file found"
+          echo "=========================="
