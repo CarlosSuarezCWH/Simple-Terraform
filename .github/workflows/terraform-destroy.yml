@@ -9,55 +9,141 @@ on:
         default: "CANCEL"
 
 env:
-  TF_IN_AUTOMATION: true  # Critical for CI/CD
-  TF_CLI_ARGS: "-no-color"  # Cleaner logs
+  TF_IN_AUTOMATION: true
+  TF_CLI_ARGS: "-no-color"
+  TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}  # Pasa la variable directamente al entorno de Terraform
 
 jobs:
   destroy:
     if: github.event.inputs.confirmation == 'DESTROY-PROD'
     runs-on: ubuntu-latest
-    environment: production  # Requires environment protection rules
+    environment: 
+      name: production
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}  # Enlace al run actual
     permissions:
       contents: read
-      id-token: write  # Required for AWS OIDC if using it
+      id-token: write
 
     steps:
       - name: 🛑 Check Destruction Scope
         run: |
-          echo "⚠️ WARNING: This will DESTROY ALL RESOURCES in ${AWS_DEFAULT_REGION}"
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Triggered by: $GITHUB_ACTOR"
+          echo "╔════════════════════════════════════════════════╗"
+          echo "║  ⚠️  DESTRUCTION WARNING - PRODUCTION ENVIRONMENT ⚠️  ║"
+          echo "╚════════════════════════════════════════════════╝"
+          echo "• AWS Region: ${AWS_DEFAULT_REGION}"
+          echo "• Repository: $GITHUB_REPOSITORY"
+          echo "• Triggered by: $GITHUB_ACTOR"
+          echo "• Run ID: $GITHUB_RUN_ID"
+          echo ""
+          echo "THIS WILL PERMANENTLY DESTROY:"
+          echo "- Database: sportsstore"
+          echo "- EC2 Instances"
+          echo "- All associated resources"
+          echo ""
+          echo "Waiting 10 seconds to allow cancellation..."
+          sleep 10
 
-      - name: 🔍 Checkout Code
+      - name: 🔍 Checkout Code (v4 with full history)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for Terraform may be needed
+          fetch-depth: 0  # Necesario para ciertas operaciones de Terraform
 
-      - name: ⚙️ Setup Terraform
+      - name: ⚙️ Setup Terraform (pinned version)
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.8.0"  # Pin your version
+          terraform_version: "1.8.0"  # Usa tu versión específica
           terraform_wrapper: false
 
-      - name: 🔑 AWS Credentials
+      - name: 🔑 AWS Credentials (OIDC recommended)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE }}  # Opcional pero recomendado
 
-      - name: 🏗️ Terraform Init
-        run: terraform init -input=false -backend-config="bucket=your-tf-state-bucket"
+      - name: 🏗️ Terraform Init (with backend config)
+        run: |
+          terraform init \
+            -input=false \
+            -backend-config="bucket=your-tf-state-bucket" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="region=${{ secrets.AWS_DEFAULT_REGION }}"
 
       - name: 🕵️♂️ Terraform Plan (Destroy)
-        run: terraform plan -destroy -input=false -out=destroy.plan
+        run: |
+          terraform plan \
+            -destroy \
+            -input=false \
+            -out=destroy.plan \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="aws_region=${{ secrets.AWS_DEFAULT_REGION }}"
 
-      - name: 🧨 Terraform Destroy
-        run: terraform apply -input=false -auto-approve destroy.plan
+      - name: 🧨 Terraform Destroy (with timeout)
+        timeout-minutes: 30
+        run: |
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            destroy.plan
 
       - name: 📝 Destruction Report
         if: always()
         run: |
-          echo "=== Destruction Summary ==="
-          terraform show -no-color destroy.plan 2>/dev/null || echo "No plan file found"
-          echo "=========================="
+          echo "╔══════════════════════════════════════╗"
+          echo "║        DESTRUCTION SUMMARY           ║"
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "• Execution Time: $(date)"
+          echo "• Run URL: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          echo ""
+          echo "=== Terraform Output ==="
+          terraform output 2>/dev/null || echo "No outputs available"
+          echo ""
+          echo "=== Resources Destroyed ==="
+          terraform show -no-color destroy.plan 2>/dev/null | grep "will be destroyed" || echo "No plan file found"
+          echo ""
+          echo "╔══════════════════════════════════════╗"
+          echo "║        DESTRUCTION COMPLETE           ║"
+          echo "╚══════════════════════════════════════╝"
+
+      - name: 🚨 Notify Slack (optional)
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "🚨 Infrastructure Destruction ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚨 Infrastructure Destruction ${{ job.status }}*"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Triggered by:*\n${{ github.actor }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${{ job.status }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Run URL:*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
