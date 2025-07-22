@@ -125,7 +125,7 @@ jobs:
 
       - name: 🛠️ Setup application environment
         run: |
-          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} << EOSSH
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} << 'EOSSH'
             set -e
             echo "🐍 Setting up Python environment..."
             sudo yum update -y
