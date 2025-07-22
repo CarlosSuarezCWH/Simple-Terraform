@@ -51,9 +51,15 @@ jobs:
       - name: 📡 Get infrastructure outputs
         id: terraform-output
         run: |
+          echo "Mostrando outputs de Terraform para depuración:"
+          terraform output
           echo "db_endpoint=$(terraform output -raw db_endpoint)" >> $GITHUB_OUTPUT
           echo "web_server_ip=$(terraform output -raw web_server_ip)" >> $GITHUB_OUTPUT
           echo "WEB_SERVER_IP=$(terraform output -raw web_server_ip)" >> $GITHUB_ENV
+
+      - name: Verificar valor de db_endpoint
+        run: |
+          echo "Valor de db_endpoint recibido: ${{ steps.terraform-output.outputs.db_endpoint }}"
 
       - name: 🔐 Setup SSH key
         run: |
@@ -131,8 +137,8 @@ jobs:
             pip install -r "${{ env.APP_DIR }}/requirements.txt"
 
             echo "🔧 Configuring environment variables..."
-            # Eliminar :3306 del endpoint si existe
             DB_HOST_CLEAN=$(echo "${{ steps.terraform-output.outputs.db_endpoint }}" | sed 's/:3306//')
+            echo "Valor limpio para DB_HOST: $DB_HOST_CLEAN"
             cat > .env << EOF
             DB_HOST=$DB_HOST_CLEAN
             DB_USER=${{ secrets.DB_USERNAME }}
