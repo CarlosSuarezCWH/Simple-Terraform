@@ -156,7 +156,7 @@ jobs:
 
       - name: 🔄 Reiniciar aplicación en EC2
         run: |
-          ssh -v -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "
+          ssh -v -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} << 'EOSSH'
             set -e
             cd $APP_DIR
             echo 'Archivos en el directorio:'
@@ -164,12 +164,45 @@ jobs:
             echo 'Contenido de .env:'
             cat .env
             echo 'Intentando matar procesos python app.py...'
-            pkill -f 'python app.py' || true
+            pkill -f 'python app.py' || echo "No había procesos corriendo"
             echo 'Activando entorno virtual e iniciando aplicación...'
-            source venv/bin/activate && nohup python app.py > app.log 2>&1 &
+            source venv/bin/activate
+            nohup python app.py > app.log 2>&1 &
             echo 'Aplicación lanzada, mostrando últimos logs:'
-            sleep 2
+            sleep 5
             tail -20 app.log || echo 'No hay logs aún'
+            pgrep -f "python app.py" || { echo "Error: La aplicación no se está ejecutando"; exit 1; }
+          EOSSH
+
+      - name: Verificar proceso de la aplicación
+        run: |
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "
+            cd $APP_DIR
+            if pgrep -f 'python app.py'; then
+              echo '✅ La aplicación está corriendo'
+              exit 0
+            else
+              echo '❌ La aplicación no está corriendo'
+              echo 'Últimas líneas del log:'
+              tail -50 app.log || echo 'No hay logs'
+              exit 1
+            fi
+          "
+
+      - name: Verificar dependencias Python
+        run: |
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "
+            cd $APP_DIR
+            source venv/bin/activate
+            pip check || { echo 'Error en las dependencias'; exit 1; }
+            python -c 'import flask' || { echo 'Flask no está instalado'; exit 1; }
+          "
+
+      - name: Verificar aplicación localmente en el servidor
+        run: |
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "
+            curl -sSf http://localhost:${{ env.APP_PORT }}/health-check || \
+            { echo 'La aplicación no responde localmente'; exit 1; }
           "
 
       - name: Mostrar .env en EC2
