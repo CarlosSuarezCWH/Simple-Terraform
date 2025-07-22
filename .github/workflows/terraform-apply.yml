@@ -31,7 +31,11 @@ jobs:
         uses: hashicorp/setup-terraform@v3
       
       - name: Terraform Init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.MI_BUCKET_TFSTATE }}" \
+            -backend-config="region=${{ secrets.AWS_DEFAULT_REGION }}" \
+            -backend-config="key=terraform.tfstate"
       
       - name: Terraform Plan
         run: terraform plan -var="db_password=$DB_PASSWORD" -out=tfplan

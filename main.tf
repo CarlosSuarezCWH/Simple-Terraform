@@ -6,6 +6,13 @@ terraform {
       version = "~> 5.0"
     }
   }
+  backend "s3" {
+    bucket         = ""
+    key            = "terraform.tfstate"
+    region         = ""
+    encrypt        = true
+    # dynamodb_table = "" # Descomenta si usas DynamoDB para locking
+  }
 }
 
 provider "aws" {
