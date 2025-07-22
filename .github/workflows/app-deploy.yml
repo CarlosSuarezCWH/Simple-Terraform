@@ -165,10 +165,8 @@ jobs:
             cat .env
             echo 'Intentando matar procesos python app.py...'
             pkill -f 'python app.py' || true
-            echo 'Activando entorno virtual...'
-            source venv/bin/activate
-            echo 'Iniciando aplicación...'
-            nohup python app.py > app.log 2>&1 &
+            echo 'Activando entorno virtual e iniciando aplicación...'
+            source venv/bin/activate && nohup python app.py > app.log 2>&1 &
             echo 'Aplicación lanzada, mostrando últimos logs:'
             sleep 2
             tail -20 app.log || echo 'No hay logs aún'
