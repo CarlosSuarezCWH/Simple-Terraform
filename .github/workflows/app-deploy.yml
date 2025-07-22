@@ -144,6 +144,10 @@ jobs:
             nohup python app.py > app.log 2>&1 &
           EOSSH
 
+      - name: Mostrar .env en EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "cat $APP_DIR/.env"
+
       - name: ⏳ Wait for application
         run: |
           echo "⏱️ Waiting for application to start..."
