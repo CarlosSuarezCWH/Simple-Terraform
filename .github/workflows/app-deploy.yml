@@ -65,16 +65,28 @@ jobs:
       - name: 📦 Install rsync (for efficient file transfers)
         run: sudo apt-get update && sudo apt-get install -y rsync
 
+      - name: 🔎 Mostrar IP del servidor
+        run: |
+          echo "La IP del servidor es: ${{ env.WEB_SERVER_IP }}"
+
+      - name: Verificar que la IP no esté vacía
+        run: |
+          if [ -z "${{ env.WEB_SERVER_IP }}" ]; then
+            echo "ERROR: La IP del servidor está vacía."
+            exit 1
+          fi
+
       - name: Crear directorio destino en EC2
         run: |
-          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "mkdir -p $APP_DIR"
+          echo "Conectando a $DEPLOY_USER@${{ env.WEB_SERVER_IP }}"
+          ssh -v -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "mkdir -p $APP_DIR"
 
       - name: 🚀 Deploy application files
         run: |
           echo "Archivos locales:"
           ls -l ./app/
-          echo "Copiando archivos al servidor..."
-          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" \
+          echo "Copiando archivos al servidor $DEPLOY_USER@${{ env.WEB_SERVER_IP }}:$APP_DIR"
+          rsync -avz --delete -e "ssh -v -o StrictHostKeyChecking=no" \
             ./app/ $DEPLOY_USER@${{ env.WEB_SERVER_IP }}:$APP_DIR/
 
       - name: 🛠️ Setup application environment
