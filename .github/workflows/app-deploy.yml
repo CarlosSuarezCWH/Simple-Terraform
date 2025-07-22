@@ -159,9 +159,9 @@ jobs:
 
       - name: 🔄 Reiniciar aplicación en EC2
         run: |
-          ssh -v -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} << 'EOSSH'
+          ssh -v -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} << EOSSH
             set -e
-            cd $APP_DIR
+            cd /home/ec2-user/app
             echo 'Archivos en el directorio:'
             ls -l
             echo 'Contenido de .env:'
