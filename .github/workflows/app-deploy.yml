@@ -62,6 +62,12 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ steps.terraform-output.outputs.web_server_ip }} >> ~/.ssh/known_hosts
 
+      - name: Verificar llave SSH
+        run: |
+          ls -l ~/.ssh/
+          head -5 ~/.ssh/id_rsa
+          echo "Tamaño de la llave: $(wc -c < ~/.ssh/id_rsa) bytes"
+
       - name: 📦 Install rsync (for efficient file transfers)
         run: sudo apt-get update && sudo apt-get install -y rsync
 
