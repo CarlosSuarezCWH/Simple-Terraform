@@ -7,9 +7,6 @@ on:
     paths:
       - 'app/**'
       - 'scripts/**'
-    paths-ignore:
-      - '**/README.md'
-      - '**/*.txt'
 
 env:
   TF_IN_AUTOMATION: true
