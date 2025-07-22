@@ -140,12 +140,12 @@ jobs:
             DB_HOST_CLEAN=$(echo "${{ steps.terraform-output.outputs.db_endpoint }}" | sed 's/:3306//')
             echo "Valor limpio para DB_HOST: $DB_HOST_CLEAN"
             cat > .env <<EOF
-DB_HOST=$DB_HOST_CLEAN
-DB_USER=${{ secrets.DB_USERNAME }}
-DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-DB_NAME=sportsstore
-APP_PORT=${{ env.APP_PORT }}
-EOF
+            DB_HOST=$DB_HOST_CLEAN
+            DB_USER=${{ secrets.DB_USERNAME }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_NAME=sportsstore
+            APP_PORT=${{ env.APP_PORT }}
+            EOF
 
             echo "Contenido de .env antes de arrancar la app:"
             cat .env
