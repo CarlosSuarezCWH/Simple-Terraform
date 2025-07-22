@@ -68,9 +68,15 @@ jobs:
       - name: 📦 Install rsync (for efficient file transfers)
         run: sudo apt-get update && sudo apt-get install -y rsync
 
+      - name: Crear directorio destino en EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "mkdir -p $APP_DIR"
+
       - name: 🚀 Deploy application files
         run: |
-          echo "📂 Syncing application files to server..."
+          echo "Archivos locales:"
+          ls -l ./app/
+          echo "Copiando archivos al servidor..."
           rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" \
             ./app/ $DEPLOY_USER@${{ env.WEB_SERVER_IP }}:$APP_DIR/
 
