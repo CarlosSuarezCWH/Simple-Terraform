@@ -151,7 +151,10 @@ jobs:
             echo \"DB_PASSWORD=$DB_PASS\" >> .env
             echo \"DB_NAME=sportsstore\" >> .env
             echo \"APP_PORT=$APP_PORT\" >> .env
+            echo 'Verificando archivo .env:'
+            ls -l .env
             cat .env
+            [ -f .env ] || { echo '.env no fue creado'; exit 1; }
           "
 
       - name: 🔄 Reiniciar aplicación en EC2
