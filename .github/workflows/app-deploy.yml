@@ -44,7 +44,12 @@ jobs:
           terraform_wrapper: false
 
       - name: 🏗️ Terraform Init
-        run: terraform init -input=false
+        run: |
+          terraform init \
+            -input=false \
+            -backend-config="bucket=${{ secrets.MI_BUCKET_TFSTATE }}" \
+            -backend-config="region=${{ secrets.AWS_DEFAULT_REGION }}" \
+            -backend-config="key=terraform.tfstate"
 
       - name: 📡 Get infrastructure outputs
         id: terraform-output
