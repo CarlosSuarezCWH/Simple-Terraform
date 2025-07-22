@@ -87,6 +87,17 @@ jobs:
           echo "Conectando a $DEPLOY_USER@${{ env.WEB_SERVER_IP }}"
           ssh -v -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "mkdir -p $APP_DIR"
 
+      - name: Mostrar estructura local antes de rsync
+        run: |
+          echo "Estructura local de ./app antes de copiar:"
+          ls -lR ./app || echo "No existe ./app"
+          if [ -f ./app/requirements.txt ]; then
+            echo "Contenido local de requirements.txt:"
+            cat ./app/requirements.txt
+          else
+            echo "No existe requirements.txt en ./app"
+          fi
+
       - name: 🚀 Deploy application files
         run: |
           echo "Archivos locales:"
@@ -94,6 +105,17 @@ jobs:
           echo "Copiando archivos al servidor $DEPLOY_USER@${{ env.WEB_SERVER_IP }}:$APP_DIR"
           rsync -avz --delete -e "ssh -v -o StrictHostKeyChecking=no" \
             ./app/ $DEPLOY_USER@${{ env.WEB_SERVER_IP }}:$APP_DIR/
+
+      - name: Listar archivos en EC2 después de la copia
+        run: |
+          echo "Estructura remota de $APP_DIR:"
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "ls -lR $APP_DIR"
+          if ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "test -f $APP_DIR/requirements.txt"; then
+            echo "Contenido remoto de requirements.txt:"
+            ssh -o StrictHostKeyChecking=no $DEPLOY_USER@${{ env.WEB_SERVER_IP }} "cat $APP_DIR/requirements.txt"
+          else
+            echo "No existe requirements.txt en $APP_DIR"
+          fi
 
       - name: 🛠️ Setup application environment
         run: |
